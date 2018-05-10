@@ -15,30 +15,82 @@ import operator
 import re
 
 def run(args):
-	filename = args.delta
-	unique_length = args.unique_length
-	output_filename = args.out
-	keep_small_uniques = True
-	max_overview_alignments = args.overview
+    use_delta = True
+    if args.delta is not None:
+        filename = args.delta
+    elif args.paf is not None:
+        filename = args.paf
+        use_delta = False
+    else:
+        return 
+    
+    unique_length = args.unique_length
+    output_filename = args.out
+    keep_small_uniques = True
+    max_overview_alignments = args.overview
 
-	# Read through the file and store information indexed by Query sequence names
-	header_lines_by_query, lines_by_query = getQueryRefCombinations(filename)
+    # Read through the file and store information indexed by Query sequence names
+    header_lines_by_query, lines_by_query = getQueryRefCombinations(filename, use_delta)
 
-	# Figure out which alignments contain sufficient unique anchor sequences
-	unique_alignments = calculateUniqueness(header_lines_by_query, lines_by_query, unique_length, keep_small_uniques)
+    # Figure out which alignments contain sufficient unique anchor sequences
+    unique_alignments = calculateUniqueness(header_lines_by_query, lines_by_query, unique_length, keep_small_uniques)
 
-	# Write a filtered delta file, and coordinate files with uniqueness tags
-	reference_lengths, fields_by_query = writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query)
-	
-	index_for_dot(reference_lengths, fields_by_query, output_filename, max_overview_alignments)
+    # Write a filtered delta file, and coordinate files with uniqueness tags
+    reference_lengths, fields_by_query = writeFilteredFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, use_delta)
+    
+    index_for_dot(reference_lengths, fields_by_query, output_filename, max_overview_alignments)
 
 
 def scrub(string):
 	return string.replace(",","_").replace("!","_").replace("~","_").replace("#", "_")
 
+def getQueryRefCombinations_paf(filename):
+        # print("header from delta file:")
+	
+	# try:
+		# f = gzip.open(filename, 'rt')
+		# print(f.readline().strip())
+	# except:
+        f = open(filename, 'r')
+		# print(f.readline().strip())
 
-def getQueryRefCombinations(filename):
-	print("header from delta file:")
+	# Ignore the first two lines for now
+	# print(f.readline().strip())
+
+	linecounter = 0
+
+	current_query_name = ""
+	current_header = ""
+
+	lines_by_query = {}
+	header_lines_by_query = {}
+
+	before = time.time()
+
+	for line in f:
+            linecounter += 1
+            current_header = line.strip()
+            current_query_name = scrub(current_header.split()[0])
+            
+            fields = line.strip().split()
+            # sometimes start and end are the other way around, but for this they need to be in order
+            query_min = int(fields[2])
+            query_max = int(fields[3])
+            if header_lines_by_query.get(current_query_name, None) == None:
+                    lines_by_query[current_query_name] = []
+                    header_lines_by_query[current_query_name] = []
+            lines_by_query[current_query_name].append((query_min,query_max))
+            header_lines_by_query[current_query_name].append(current_header)
+
+	f.close()
+
+	print("First read through the file: %d seconds for %d query-reference combinations" % (time.time()-before,linecounter))
+	
+	return (header_lines_by_query, lines_by_query)
+        
+
+def getQueryRefCombinations_delta(filename):
+        print("header from delta file:")
 	
 	try:
 		f = gzip.open(filename, 'rt')
@@ -83,9 +135,18 @@ def getQueryRefCombinations(filename):
 	print("First read through the file: %d seconds for %d query-reference combinations" % (time.time()-before,linecounter))
 	
 	return (header_lines_by_query, lines_by_query)
+def getQueryRefCombinations(filename, use_delta):
+    if 	use_delta:
+        return getQueryRefCombinations_delta(filename)
+    else:
+        return getQueryRefCombinations_paf(filename)
+
+
+        
 
 def calculateUniqueness(header_lines_by_query, lines_by_query, unique_length, keep_small_uniques):
-	before = time.time()
+	# print header_lines_by_query
+        before = time.time()
 	unique_alignments = {}
 	num_queries = len(lines_by_query)
 	print("Filtering alignments of %d queries" % (num_queries))
@@ -193,8 +254,91 @@ def binary_search(query, numbers, left, right):
 def natural_key(string_):
 	"""See http://www.codinghorror.com/blog/archives/001018.html"""
 	return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
+def writeFilteredPafFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query):
+	before = time.time()
+	f_out_paf = gzip.open(output_filename + ".uniqueAnchorFiltered_l%d.paf.gz" % (unique_length),'wt')
+	
+	# try:
+		# f = gzip.open(filename, 'rt')
+	# except:
+        f = open(filename, 'r')
+		
+	
+	linecounter = 0
 
-def writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query):
+	# For filtered delta file:
+	list_of_unique_alignments = []
+	alignment_counter = {}
+
+	# For coords:
+	current_query_name = ""
+	current_query_position = 0
+
+	# For basic assembly stats:
+	ref_sequences = set()
+	query_sequences = set()
+	reference_lengths = []
+	query_lengths = {}
+	fields_by_query = {}
+
+
+	for line in f:
+            linecounter += 1
+            fields = line.strip().split()
+                    
+                    # For delta file output:
+            query = scrub(fields[0])
+            list_of_unique_alignments = unique_alignments[query]
+
+            # header_needed = False
+            # for index in list_of_unique_alignments:
+                    # if line.strip() == header_lines_by_query[query][index]:
+                            # header_needed = True
+            # if header_needed == True:
+                # f_out_paf.write(line) # if we have any alignments under this header, print(the header)
+            alignment_counter[query] = alignment_counter.get(query,0)
+
+            # For coords:
+            current_reference_name = scrub(fields[5])
+            current_query_name = scrub(fields[0])
+
+            current_reference_size = int(fields[6])
+            current_query_size = int(fields[1])
+
+            # For index:
+            if not current_reference_name in ref_sequences:
+                    reference_lengths.append((current_reference_name, current_reference_size))
+                    ref_sequences.add(current_reference_name)
+            if not current_query_name in query_sequences:
+                    query_lengths[current_query_name] = current_query_size
+                    query_sequences.add(current_query_name)
+
+            # For coords:
+            ref_start = int(fields[7])
+            ref_end = int(fields[8])
+            query_start = int(fields[2])
+            query_end = int(fields[3])
+            if fields[4] == "-":
+                t = query_start
+                query_start = query_end
+                query_end = t
+            csv_tag = "repetitive"
+            if alignment_counter[query] in list_of_unique_alignments:
+                    f_out_paf.write(line)
+                    csv_tag = "unique"
+            fields = [ref_start, ref_end, query_start, query_end, current_reference_size, current_query_size, current_reference_name, current_query_name, csv_tag]
+            if fields_by_query.get(current_query_name, None) == None:
+                    fields_by_query[current_query_name] = []
+            fields_by_query[current_query_name].append(fields)
+            alignment_counter[query] = alignment_counter[query] + 1
+	f.close()
+	f_out_paf.close()
+
+	print("Writing filtered delta file and capturing information for coords file: %d seconds for %d total lines in file" % (time.time()-before,linecounter))
+	
+	return reference_lengths, fields_by_query
+
+def writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, use_delta):
 	before = time.time()
 	f_out_delta = gzip.open(output_filename + ".uniqueAnchorFiltered_l%d.delta.gz" % (unique_length),'wt')
 	
@@ -291,6 +435,11 @@ def writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_
 	
 	return reference_lengths, fields_by_query
 
+def writeFilteredFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, use_delta):
+    if use_delta:
+        return writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query)
+    else:
+        return writeFilteredPafFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query)
 def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overview_alignments):
 
 	#  Find the order of the reference chromosomes
@@ -323,7 +472,7 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
 
 	all_alignments = []
 	last_query = ""
-
+        # print fields_by_query
 	for query_name in fields_by_query:
 
 		lines = fields_by_query[query_name]
@@ -334,11 +483,13 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
 		all_references_by_query[query_name] = set()
 
 		for fields in lines:
+                        # print fields
 			tag = fields[8]
 
 			query_name = fields[7]
 			query_lengths[query_name] = int(fields[5])
 
+                        ref = fields[6]
 			all_references_by_query[query_name].add(ref)
 			# Only use unique alignments to decide contig orientation
 			if tag == "unique":
@@ -347,7 +498,6 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
 				ref_start = int(fields[0])
 				ref_stop = int(fields[1])
 				alignment_length = abs(int(fields[3])-int(fields[2]))
-				ref = fields[6]
 
 				# for index:
 				unique_references_by_query[query_name].add(ref)
@@ -428,13 +578,17 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
 
 def main():
 	parser=argparse.ArgumentParser(description="Take a delta file, apply Assemblytics unique anchor filtering, and prepare coordinates input files for Dot")
-	parser.add_argument("--delta",help="delta file" ,dest="delta", type=str, required=True)
-	parser.add_argument("--out",help="output file" ,dest="out", type=str, default="output")
+	parser.add_argument("--delta",help="delta file" ,dest="delta", type=str)
+	parser.add_argument("--paf",help="paf file",dest="paf", type=str)
+        parser.add_argument("--out",help="output file" ,dest="out", type=str, default="output")
 	parser.add_argument("--unique-length",help="The total length of unique sequence an alignment must have on the query side to be retained. Default: 10000" ,dest="unique_length",type=int, default=10000)
 	parser.add_argument("--overview",help="The number of alignments to include in the coords.idx output file, which will be shown in the overview for Dot. Default: 1000" ,dest="overview",type=int, default=1000)
 	parser.set_defaults(func=run)
 	args=parser.parse_args()
+        if not (args.delta or args.paf):
+            parser.error('No alignment file provided, please specify a delta or paf file!')
 	args.func(args)
 
 if __name__=="__main__":
 	main()
+
