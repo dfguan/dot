@@ -49,6 +49,9 @@ def getQueryRefCombinations_paf(filename):
         
         try:
                 f = gzip.open(filename, 'rt')
+                f.read(1)
+                f.close() # don't know how to rewind close and open again
+                f = gzip.open(filename, 'rt')
                 # print(f.readline().strip())
         except:
                 f = open(filename, 'r')
@@ -264,6 +267,9 @@ def writeFilteredPafFile(filename, output_filename, unique_alignments, unique_le
         f_out_paf = gzip.open(output_filename + ".uniqueAnchorFiltered_l%d.paf.gz" % (unique_length),'wt')
         
         try:
+            f = gzip.open(filename, 'rt')
+            f.read(1)
+            f.close() # don't know how to rewind close and open again
             f = gzip.open(filename, 'rt')
         except:
             f = open(filename, 'r')
