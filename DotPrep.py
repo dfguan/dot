@@ -47,11 +47,17 @@ def scrub(string):
 def getQueryRefCombinations_paf(filename):
         # print("header from delta file:")
         
+        try:
+                f = gzip.open(filename, 'rt')
+                # print(f.readline().strip())
+        except:
+                f = open(filename, 'r')
+                # print(f.readline().strip())
         # try:
                 # f = gzip.open(filename, 'rt')
                 # print(f.readline().strip())
         # except:
-        f = open(filename, 'r')
+        # f = open(filename, 'r')
                 # print(f.readline().strip())
 
         # Ignore the first two lines for now
@@ -85,7 +91,6 @@ def getQueryRefCombinations_paf(filename):
         f.close()
 
         print("First read through the file: %d seconds for %d query-reference combinations" % (time.time()-before,linecounter))
-        
         return (header_lines_by_query, lines_by_query)
         
 
@@ -258,10 +263,10 @@ def writeFilteredPafFile(filename, output_filename, unique_alignments, unique_le
         before = time.time()
         f_out_paf = gzip.open(output_filename + ".uniqueAnchorFiltered_l%d.paf.gz" % (unique_length),'wt')
         
-        # try:
-                # f = gzip.open(filename, 'rt')
-        # except:
-        f = open(filename, 'r')
+        try:
+            f = gzip.open(filename, 'rt')
+        except:
+            f = open(filename, 'r')
                 
         
         linecounter = 0
@@ -338,7 +343,7 @@ def writeFilteredPafFile(filename, output_filename, unique_alignments, unique_le
         
         return reference_lengths, fields_by_query
 
-def writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, use_delta):
+def writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query):
         before = time.time()
         f_out_delta = gzip.open(output_filename + ".uniqueAnchorFiltered_l%d.delta.gz" % (unique_length),'wt')
         
