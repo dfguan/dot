@@ -38,7 +38,7 @@ def run(args):
     # Write a filtered delta file, and coordinate files with uniqueness tags
     reference_lengths, fields_by_query = writeFilteredFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query, use_delta)
     
-    index_for_dot(reference_lengths, fields_by_query, output_filename, max_overview_alignments)
+    index_for_dot(reference_lengths, fields_by_query, output_filename, max_overview_alignments, use_delta)
 
 
 def scrub(string):
@@ -451,7 +451,7 @@ def writeFilteredFile(filename, output_filename, unique_alignments, unique_lengt
         return writeFilteredDeltaFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query)
     else:
         return writeFilteredPafFile(filename, output_filename, unique_alignments, unique_length, header_lines_by_query)
-def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overview_alignments):
+def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overview_alignments, use_delta):
 
         #  Find the order of the reference chromosomes
         reference_lengths.sort(key=lambda x: natural_key(x[0]))
@@ -535,7 +535,7 @@ def index_for_dot(reference_lengths, fields_by_query, output_prefix, max_overvie
                         
                         for fields in lines:
                                 if fields[8] == tag:
-                                        if flip == True:
+                                        if flip == True and use_delta:
                                                 fields[2] = int(fields[5]) - int(fields[2])
                                                 fields[3] = int(fields[5]) - int(fields[3])
 
